@@ -11,7 +11,7 @@ export default function FullScreenVideoScreen() {
 const player = useVideoPlayer(videoUrl, (p) => {
   p.loop = true;
   try {
-    p.play(); // just call it without .catch()
+    p.play(); 
   } catch (err) {
     console.warn('play failed:', err);
   }

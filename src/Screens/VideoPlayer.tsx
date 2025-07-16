@@ -7,6 +7,7 @@ import {
   Dimensions,
   TouchableOpacity,
   ViewToken,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { VideoView, useVideoPlayer } from 'expo-video';
@@ -19,56 +20,59 @@ const VIDEO_HEIGHT = 220;
 type VideoCardProps = {
   title: string;
   videoUrl: string;
-  onPress: () => void;
   isPlaying: boolean;
-  playerRef: any;
 };
 
-const VideoCard: React.FC<VideoCardProps> = ({ title, videoUrl, onPress, isPlaying, playerRef }) => {
+const VideoCard: React.FC<VideoCardProps> = ({ title, videoUrl, isPlaying }) => {
   const isFocused = useIsFocused();
   const player = useVideoPlayer(videoUrl, (p) => {
     p.loop = true;
     p.muted = true;
   });
 
-  playerRef.current = player;
+  const playerRef = useRef(player);
 
   React.useEffect(() => {
-    let active = true;
-
     const controlPlayback = async () => {
       try {
-        if (!isFocused || !active) return;
+        if (!isFocused) return;
         if (isPlaying) {
-          await player.play();
+          await playerRef.current.play();
         } else {
-          await player.pause();
+          await playerRef.current.pause();
         }
       } catch (e) {
-        console.warn('[VideoPlayer control] error:', e);
+        console.warn('Video control error:', e);
       }
     };
 
     controlPlayback();
-    return () => {
-      active = false;
-    };
   }, [isPlaying, isFocused]);
 
+  const handleFullscreen = () => {
+    try {
+      playerRef.current.presentFullscreenPlayer();
+    } catch (e) {
+      console.warn('Fullscreen error:', e);
+    }
+  };
+
   return (
-    <TouchableOpacity onPress={onPress} style={styles.card}>
-      <VideoView player={player} style={styles.video} />
+    <View style={styles.card}>
+      <TouchableOpacity activeOpacity={0.9} onPress={handleFullscreen}>
+        <VideoView player={player} style={styles.video} />
+      </TouchableOpacity>
       <View style={styles.overlay}>
         <Text style={styles.title}>{title}</Text>
       </View>
-    </TouchableOpacity>
+    </View>
   );
 };
 
 export default function VideoListScreen() {
   const navigation = useNavigation();
   const [currentIndex, setCurrentIndex] = useState<number | null>(0);
-  const playersRef = useRef<{ [key: number]: any }>({});
+  const [loading, setLoading] = useState(false);
 
   const onViewableItemsChanged = useCallback(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
@@ -85,6 +89,14 @@ export default function VideoListScreen() {
     itemVisiblePercentThreshold: 50,
   };
 
+  const handleNavigate = (screen: string, params?: any) => {
+    setLoading(true);
+    setTimeout(() => {
+      navigation.navigate(screen as never, params as never);
+      setLoading(false);
+    }, 300);
+  };
+
   return (
     <View style={{ flex: 1 }}>
       <FlatList
@@ -96,15 +108,6 @@ export default function VideoListScreen() {
               title={item.product_name}
               videoUrl={item.video}
               isPlaying={index === currentIndex}
-              playerRef={{
-                current: (ref: any) => (playersRef.current[index] = ref),
-              }}
-              onPress={() =>
-                navigation.navigate('FullScreenVideo', {
-                  videoUrl: item.video,
-                  title: item.product_name,
-                })
-              }
             />
             {index === mockVideoData.length - 1 && index === currentIndex && (
               <View style={styles.theEndContainer}>
@@ -120,14 +123,17 @@ export default function VideoListScreen() {
           paddingBottom: height / 2,
         }}
       />
+
       <FloatingButton
-        onPress={() => {
-          const currentPlayer = playersRef.current?.[currentIndex ?? 0];
-          if (currentPlayer?.pause) currentPlayer.pause();
-          navigation.navigate('Task2');
-        }}
+        onPress={() => handleNavigate('Task2')}
         icon="arrow-forward-circle"
       />
+
+      {loading && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color="#ffffff" />
+        </View>
+      )}
     </View>
   );
 }
@@ -163,5 +169,12 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: 'bold',
     color: 'gray',
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
   },
 });
