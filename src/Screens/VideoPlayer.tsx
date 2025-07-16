@@ -1,151 +1,128 @@
-import React, { useEffect, useState, useRef, RefObject, JSX } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
   FlatList,
   StyleSheet,
   Dimensions,
-  ActivityIndicator,
+  TouchableOpacity,
   ViewToken,
 } from 'react-native';
-import { useVideoPlayer, VideoView, VideoPlayer } from 'expo-video';
-import { useEvent } from 'expo';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useIsFocused } from '@react-navigation/native';
+import { VideoView, useVideoPlayer } from 'expo-video';
+import { mockVideoData } from '../data/VideoData';
 import FloatingButton from '../components/floatingButton';
 
-
-
 const { width, height } = Dimensions.get('window');
+const VIDEO_HEIGHT = 220;
 
-type VideoItem = {
-  product_name: string;
-  video: string;
-};
-
-const mockVideoData: VideoItem[] = [
-  {
-    product_name: 'Big Buck Bunny',
-    video: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-  },
-  {
-    product_name: 'Sintel',
-    video: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4',
-  },
-  {
-    product_name: 'Tears of Steel',
-    video: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4',
-  },
-];
-
-// ✅ Child Video Component Props
 type VideoCardProps = {
   title: string;
   videoUrl: string;
-  isActive: boolean;
-  onPlayerReady: (player: VideoPlayer) => void;
+  onPress: () => void;
+  isPlaying: boolean;
+  playerRef: any;
 };
 
-const VideoCard: React.FC<VideoCardProps> = ({ title, videoUrl, isActive, onPlayerReady }) => {
+const VideoCard: React.FC<VideoCardProps> = ({ title, videoUrl, onPress, isPlaying, playerRef }) => {
+  const isFocused = useIsFocused();
   const player = useVideoPlayer(videoUrl, (p) => {
     p.loop = true;
+    p.muted = true;
   });
 
-  useEffect(() => {
-    onPlayerReady(player);
-  }, []);
+  playerRef.current = player;
 
-  useEffect(() => {
-    if (isActive) {
-      player.play();
-    } else {
-      player.pause();
-    }
-  }, [isActive]);
+  React.useEffect(() => {
+    let active = true;
 
-  useEvent(player, 'playingChange', {
-    isPlaying: player.playing,
-  });
+    const controlPlayback = async () => {
+      try {
+        if (!isFocused || !active) return;
+        if (isPlaying) {
+          await player.play();
+        } else {
+          await player.pause();
+        }
+      } catch (e) {
+        console.warn('[VideoPlayer control] error:', e);
+      }
+    };
+
+    controlPlayback();
+    return () => {
+      active = false;
+    };
+  }, [isPlaying, isFocused]);
 
   return (
-    <View style={styles.card}>
-      <VideoView
-        style={styles.video}
-        player={player}
-        allowsFullscreen
-        allowsPictureInPicture
-      />
+    <TouchableOpacity onPress={onPress} style={styles.card}>
+      <VideoView player={player} style={styles.video} />
       <View style={styles.overlay}>
         <Text style={styles.title}>{title}</Text>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 };
 
-export default function VideoListScreen(): JSX.Element {
-  const [videos, setVideos] = useState<VideoItem[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [activeIndex, setActiveIndex] = useState<number>(0);
-  const playersRef = useRef<VideoPlayer[]>([]);
+export default function VideoListScreen() {
   const navigation = useNavigation();
+  const [currentIndex, setCurrentIndex] = useState<number | null>(0);
+  const playersRef = useRef<{ [key: number]: any }>({});
 
-  useEffect(() => {
-    setTimeout(() => {
-      setVideos(mockVideoData);
-      setLoading(false);
-    }, 1000);
-  }, []);
+  const onViewableItemsChanged = useCallback(
+    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
+      if (viewableItems.length === 0) return;
+      const centerIndex = viewableItems[Math.floor(viewableItems.length / 2)]?.index;
+      if (centerIndex != null && centerIndex !== currentIndex) {
+        setCurrentIndex(centerIndex);
+      }
+    },
+    [currentIndex]
+  );
 
-  const onPlayerReady = (index: number) => (playerInstance: VideoPlayer) => {
-    playersRef.current[index] = playerInstance;
+  const viewabilityConfig = {
+    itemVisiblePercentThreshold: 50,
   };
-
-  useEffect(() => {
-    return () => {
-      playersRef.current.forEach((p) => {
-        if (p?.pause) p.pause();
-      });
-    };
-  }, []);
-
-  const onViewRef = useRef(({ viewableItems }: { viewableItems: ViewToken[] }) => {
-    if (viewableItems.length > 0 && viewableItems[0].index !== null) {
-      setActiveIndex(viewableItems[0].index);
-    }
-  });
-
-  const viewConfigRef = useRef({ viewAreaCoveragePercentThreshold: 70 });
-
-  if (loading) {
-    return (
-      <View style={styles.loaderContainer}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
-  }
 
   return (
     <View style={{ flex: 1 }}>
       <FlatList
-        data={videos}
+        data={mockVideoData}
         keyExtractor={(_, index) => index.toString()}
         renderItem={({ item, index }) => (
-          <VideoCard
-            title={item.product_name}
-            videoUrl={item.video}
-            isActive={activeIndex === index}
-            onPlayerReady={onPlayerReady(index)}
-          />
+          <View key={index}>
+            <VideoCard
+              title={item.product_name}
+              videoUrl={item.video}
+              isPlaying={index === currentIndex}
+              playerRef={{
+                current: (ref: any) => (playersRef.current[index] = ref),
+              }}
+              onPress={() =>
+                navigation.navigate('FullScreenVideo', {
+                  videoUrl: item.video,
+                  title: item.product_name,
+                })
+              }
+            />
+            {index === mockVideoData.length - 1 && index === currentIndex && (
+              <View style={styles.theEndContainer}>
+                <Text style={styles.theEndText}>🎬 The End</Text>
+              </View>
+            )}
+          </View>
         )}
-        pagingEnabled
-        horizontal={false}
-        showsVerticalScrollIndicator={false}
-        onViewableItemsChanged={onViewRef.current}
-        viewabilityConfig={viewConfigRef.current}
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={viewabilityConfig}
+        contentContainerStyle={{
+          paddingTop: 10,
+          paddingBottom: height / 2,
+        }}
       />
-
       <FloatingButton
         onPress={() => {
-          const currentPlayer = playersRef.current[activeIndex];
+          const currentPlayer = playersRef.current?.[currentIndex ?? 0];
           if (currentPlayer?.pause) currentPlayer.pause();
           navigation.navigate('Task2');
         }}
@@ -156,31 +133,35 @@ export default function VideoListScreen(): JSX.Element {
 }
 
 const styles = StyleSheet.create({
-  loaderContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   card: {
-    width,
-    height,
+    marginBottom: 16,
+    borderRadius: 12,
+    overflow: 'hidden',
     backgroundColor: '#000',
-    justifyContent: 'center',
-    alignItems: 'center',
+    marginHorizontal: 10,
   },
   video: {
-    width,
-    height,
+    width: width - 20,
+    height: VIDEO_HEIGHT,
+    borderRadius: 12,
   },
   overlay: {
     position: 'absolute',
-    bottom: 80,
-    left: 20,
-    right: 20,
+    bottom: 10,
+    left: 12,
   },
   title: {
-    fontSize: 24,
-    color: '#fff',
+    fontSize: 16,
     fontWeight: 'bold',
+    color: '#fff',
+  },
+  theEndContainer: {
+    alignItems: 'center',
+    padding: 20,
+  },
+  theEndText: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: 'gray',
   },
 });
