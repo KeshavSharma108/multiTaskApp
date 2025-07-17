@@ -1,13 +1,14 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, memo } from 'react';
 import {
   View,
   Text,
   FlatList,
   StyleSheet,
   Dimensions,
-  TouchableOpacity,
   ViewToken,
   ActivityIndicator,
+  Platform,
+  StatusBar,
 } from 'react-native';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { VideoView, useVideoPlayer } from 'expo-video';
@@ -17,13 +18,8 @@ import FloatingButton from '../components/floatingButton';
 const { width, height } = Dimensions.get('window');
 const VIDEO_HEIGHT = 220;
 
-type VideoCardProps = {
-  title: string;
-  videoUrl: string;
-  isPlaying: boolean;
-};
-
-const VideoCard: React.FC<VideoCardProps> = ({ title, videoUrl, isPlaying }) => {
+// Memoized VideoCard
+const VideoCard = memo(({ title, videoUrl, isPlaying }: { title: string; videoUrl: string; isPlaying: boolean }) => {
   const isFocused = useIsFocused();
   const player = useVideoPlayer(videoUrl, (p) => {
     p.loop = true;
@@ -34,37 +30,24 @@ const VideoCard: React.FC<VideoCardProps> = ({ title, videoUrl, isPlaying }) => 
   const [isBuffering, setIsBuffering] = useState(true);
 
   useEffect(() => {
-    let timeout: NodeJS.Timeout;
-
     const controlPlayback = async () => {
       if (!isFocused) return;
 
       setIsBuffering(true);
       try {
-        if (isPlaying) {
-          await playerRef.current.play();
-        } else {
-          await playerRef.current.pause();
-        }
-
-        timeout = setTimeout(() => setIsBuffering(false), 1000);
+        isPlaying ? await playerRef.current.play() : await playerRef.current.pause();
+        setTimeout(() => setIsBuffering(false), 800);
       } catch (e) {
         console.warn('Playback error:', e);
       }
     };
 
     controlPlayback();
-
-    return () => clearTimeout(timeout);
   }, [isPlaying, isFocused]);
 
   return (
     <View style={styles.card}>
-      <VideoView
-        player={player}
-        style={styles.video}
-        controls // ✅ Native video controls
-      />
+      <VideoView player={player} style={styles.video} controls />
       {isBuffering && (
         <View style={styles.bufferLoader}>
           <ActivityIndicator size="large" color="#fff" />
@@ -75,20 +58,20 @@ const VideoCard: React.FC<VideoCardProps> = ({ title, videoUrl, isPlaying }) => 
       </View>
     </View>
   );
-};
+});
 
 export default function VideoListScreen() {
   const navigation = useNavigation();
-  const [currentIndex, setCurrentIndex] = useState<number>(0);
+  const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(false);
 
   const onViewableItemsChanged = useCallback(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
-      if (viewableItems.length === 0) return;
-
-      const visibleIndex = viewableItems[0]?.index ?? 0;
-      if (visibleIndex !== currentIndex) {
-        setCurrentIndex(visibleIndex);
+      if (viewableItems.length > 0) {
+        const newIndex = viewableItems[0].index ?? 0;
+        if (newIndex !== currentIndex) {
+          setCurrentIndex(newIndex);
+        }
       }
     },
     [currentIndex]
@@ -96,41 +79,53 @@ export default function VideoListScreen() {
 
   const viewabilityConfig = {
     itemVisiblePercentThreshold: 50,
+    minimumViewTime: 100,
   };
 
   const handleNavigate = (screen: string, params?: any) => {
     setLoading(true);
-    setTimeout(() => {
-      navigation.navigate(screen as never, params as never);
-      setLoading(false);
-    }, 300);
+    navigation.navigate(screen as never, params as never);
+    setLoading(false);
   };
 
+  const renderItem = useCallback(
+    ({ item, index }: { item: any; index: number }) => (
+      <View key={index}>
+        <VideoCard
+          title={item.product_name}
+          videoUrl={item.video}
+          isPlaying={index === currentIndex}
+        />
+        {index === mockVideoData.length - 1 && (
+          <View style={styles.theEndContainer}>
+            <Text style={styles.theEndText}>🎬 The End</Text>
+          </View>
+        )}
+      </View>
+    ),
+    [currentIndex]
+  );
+
   return (
-    <View style={{ flex: 1 }}>
+    <View style={{ flex: 1, backgroundColor: '#000' }}>
+      <StatusBar barStyle="light-content" />
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>🎬 MultiTube</Text>
+        <Text style={styles.headerSubtitle}>Your AI-Powered Video Player</Text>
+      </View>
+
       <FlatList
         data={mockVideoData}
         keyExtractor={(_, index) => index.toString()}
-        renderItem={({ item, index }) => (
-          <View key={index}>
-            <VideoCard
-              title={item.product_name}
-              videoUrl={item.video}
-              isPlaying={index === currentIndex}
-            />
-            {index === mockVideoData.length - 1 && (
-              <View style={styles.theEndContainer}>
-                <Text style={styles.theEndText}>🎬 The End</Text>
-              </View>
-            )}
-          </View>
-        )}
+        renderItem={renderItem}
+        initialNumToRender={4}
+        maxToRenderPerBatch={3}
+        windowSize={5}
+        removeClippedSubviews
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
-        contentContainerStyle={{
-          paddingTop: 10,
-          paddingBottom: height / 2,
-        }}
+        contentContainerStyle={{ paddingBottom: height / 2 }}
+        ListHeaderComponent={<View style={{ height: 10 }} />}
       />
 
       <FloatingButton
@@ -148,6 +143,24 @@ export default function VideoListScreen() {
 }
 
 const styles = StyleSheet.create({
+  header: {
+    paddingTop: Platform.OS === 'android' ? 40 : 60,
+    paddingBottom: 20,
+    backgroundColor: '#1e1e1e',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+  },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#f74f4f',
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: '#ccc',
+    marginTop: 4,
+  },
   card: {
     marginBottom: 16,
     borderRadius: 12,
