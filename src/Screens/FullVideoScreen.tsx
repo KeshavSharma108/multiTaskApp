@@ -1,67 +1,44 @@
-import React, { useEffect } from 'react';
-import { View, StyleSheet, Dimensions, Text } from 'react-native';
+import React from 'react';
+import { StyleSheet, View, Dimensions, Platform } from 'react-native';
 import { useRoute } from '@react-navigation/native';
-import { useVideoPlayer, VideoView } from 'expo-video';
+import { VideoView, useVideoPlayer } from 'expo-video';
 
 const { width, height } = Dimensions.get('window');
 
-export default function FullScreenVideoScreen() {
+const FullVideoScreen = () => {
   const route = useRoute();
-  const { videoUrl, title } = route.params as { videoUrl: string; title: string };
-const player = useVideoPlayer(videoUrl, (p) => {
-  p.loop = true;
-  try {
-    p.play(); 
-  } catch (err) {
-    console.warn('play failed:', err);
-  }
-});
+  const { video } = route.params || {};
 
- useEffect(() => {
-  return () => {
-    if (player?.pause) {
-      try {
-        player.pause();
-      } catch (err) {
-        console.warn('pause failed:', err);
-      }
-    }
-  };
-}, []);
-
+  const player = useVideoPlayer(video, (p) => {
+    p.play();
+  });
 
   return (
     <View style={styles.container}>
       <VideoView
-        player={player}
         style={styles.video}
-        allowsFullscreen
+        player={player}
+        nativeControls={true}
         allowsPictureInPicture
+        resizeMode="contain"
+        allowsFullscreen={false}
       />
-      <View style={styles.overlay}>
-        <Text style={styles.title}>{title}</Text>
-      </View>
     </View>
   );
-}
+};
+
+export default FullVideoScreen;
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   video: {
-    width,
-    height,
-  },
-  overlay: {
-    position: 'absolute',
-    bottom: 80,
-    left: 20,
-  },
-  title: {
-    fontSize: 22,
-    color: '#fff',
-    fontWeight: 'bold',
+    width: width,
+    height: height,
+    backgroundColor: '#000',
   },
 });

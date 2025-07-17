@@ -1,4 +1,4 @@
-import React, { useState, useCallback, JSX } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,118 +6,109 @@ import {
   Dimensions,
   StyleSheet,
   FlatList,
-  ListRenderItem,
+  ScrollView,
+  ActivityIndicator,
 } from 'react-native';
-import { Tabs } from 'react-native-collapsible-tab-view';
+import ProfileHeader from '../components/ProfileHeader';
+import TabBar from '../components/TabBar';
 
 const { width } = Dimensions.get('window');
 
-// Define type for image items
 type GridItem = {
   id: string;
   uri: string;
 };
 
-export default function SocialApp(): JSX.Element {
-  const [gridData, setGridData] = useState<GridItem[]>(
-    Array.from({ length: 20 }, (_, i) => ({
-      id: i.toString(),
-      uri: `https://picsum.photos/id/${i + 10}/200/200`,
-    }))
-  );
-  const [page, setPage] = useState<number>(1);
+const TABS = ['Posts', 'Videos', 'Tagged', 'About'] as const;
+type Tab = typeof TABS[number];
 
-  const loadMoreItems = useCallback(() => {
-    const newItems: GridItem[] = Array.from({ length: 10 }, (_, i) => {
-      const index = page * 10 + i + 10;
+export default function SocialApp() {
+  const [activeTab, setActiveTab] = useState<Tab>('Posts');
+  const [gridData, setGridData] = useState<GridItem[]>([]);
+  const [page, setPage] = useState<number>(1);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [hasMore, setHasMore] = useState<boolean>(true);
+
+  const pageSize = 20;
+
+  const fetchData = useCallback(async (pageNum: number) => {
+    setLoading(true);
+    const newItems: GridItem[] = Array.from({ length: pageSize }, (_, i) => {
+      const index = (pageNum - 1) * pageSize + i + 10;
       return {
-        id: (gridData.length + i).toString(),
+        id: index.toString(),
         uri: `https://picsum.photos/id/${index}/200/200`,
       };
     });
 
     setGridData((prev) => [...prev, ...newItems]);
-    setPage((prev) => prev + 1);
-  }, [page, gridData.length]);
+    setLoading(false);
 
-  const Header = (): JSX.Element => (
-    <View style={styles.headerContainer}>
-      <Image
-        source={{ uri: 'https://i.pravatar.cc/150?img=12' }}
-        style={styles.avatar}
-      />
-      <Text style={styles.username}>@keshav108</Text>
-      <Text style={styles.bio}>React Native Dev | UI/UX Enthusiast | Tech Explorer</Text>
-    </View>
-  );
+    // Stop loading after 100 items (example limit)
+    if (pageNum * pageSize >= 100) {
+      setHasMore(false);
+    }
+  }, []);
 
-  const renderGridItem: ListRenderItem<GridItem> = ({ item }) => (
+  useEffect(() => {
+    fetchData(page);
+  }, [fetchData, page]);
+
+  const loadMoreItems = () => {
+    if (!loading && hasMore) {
+      setPage((prev) => prev + 1);
+    }
+  };
+
+  const renderGridItem = ({ item }: { item: GridItem }) => (
     <Image source={{ uri: item.uri }} style={styles.gridImage} />
   );
 
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case 'Posts':
+        return (
+          <FlatList
+            data={gridData}
+            keyExtractor={(item) => item.id}
+            numColumns={3}
+            renderItem={renderGridItem}
+            contentContainerStyle={styles.gridContainer}
+            onEndReached={loadMoreItems}
+            onEndReachedThreshold={0.5}
+            ListFooterComponent={
+              loading ? <ActivityIndicator size="small" color="#007AFF" /> : null
+            }
+            scrollEnabled={false}
+          />
+        );
+      case 'Videos':
+        return <Text style={styles.tabText}>Video content coming soon.</Text>;
+      case 'Tagged':
+        return <Text style={styles.tabText}>No tagged content yet.</Text>;
+      case 'About':
+        return (
+          <>
+            <Text style={styles.tabText}>Contact: dev.keshav@example.com</Text>
+            <Text style={styles.tabText}>Location: India</Text>
+          </>
+        );
+    }
+  };
+
   return (
-    <Tabs.Container renderHeader={Header} lazy >
-      <Tabs.Tab name="Posts">
-        <FlatList
-          data={gridData}
-          keyExtractor={(item) => item.id}
-          numColumns={3}
-          renderItem={renderGridItem}
-          contentContainerStyle={styles.tabContent}
-          onEndReached={loadMoreItems}
-          onEndReachedThreshold={0.5}
-        />
-      </Tabs.Tab>
-
-      <Tabs.Tab name="Videos">
-        <View style={styles.tabContent}>
-          <Text style={styles.tabText}>Video content coming soon.</Text>
-        </View>
-      </Tabs.Tab>
-
-      <Tabs.Tab name="Tagged">
-        <View style={styles.tabContent}>
-          <Text style={styles.tabText}>No tagged content yet.</Text>
-        </View>
-      </Tabs.Tab>
-
-      <Tabs.Tab name="About">
-        <View style={styles.tabContent}>
-          <Text style={styles.tabText}>Contact: dev.keshav@example.com</Text>
-          <Text style={styles.tabText}>Location: India</Text>
-        </View>
-      </Tabs.Tab>
-    </Tabs.Container>
+    <ScrollView stickyHeaderIndices={[1]} showsVerticalScrollIndicator={false}>
+      <ProfileHeader />
+      <TabBar tabs={TABS as string[]} activeTab={activeTab} onTabPress={setActiveTab} />
+      <View style={styles.tabContent}>{renderTabContent()}</View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  headerContainer: {
-    paddingTop: 40,
-    paddingBottom: 20,
-    alignItems: 'center',
-    backgroundColor: '#fff',
-  },
-  avatar: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-    marginBottom: 10,
-  },
-  username: {
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  bio: {
-    fontSize: 14,
-    textAlign: 'center',
-    marginTop: 6,
-    paddingHorizontal: 20,
-    color: '#444',
-  },
   tabContent: {
+    padding: 10,
     backgroundColor: '#fff',
-    paddingVertical: 10, // Was 255, changed to 10 (adjust as needed)
   },
   tabText: {
     fontSize: 16,
@@ -128,5 +119,8 @@ const styles = StyleSheet.create({
     height: width / 3,
     borderWidth: 0.5,
     borderColor: '#ccc',
+  },
+  gridContainer: {
+    paddingBottom: 10,
   },
 });

@@ -1,212 +1,165 @@
-import React, { useState, useCallback, useRef, useEffect, memo } from 'react';
-import {
-  View,
-  Text,
-  FlatList,
-  StyleSheet,
-  Dimensions,
-  ViewToken,
-  ActivityIndicator,
-  Platform,
-  StatusBar,
-} from 'react-native';
-import { useNavigation, useIsFocused } from '@react-navigation/native';
+// screens/VideoListScreen.tsx
+import React, { useRef, useEffect } from 'react';
+import { StyleSheet, View, Text, Dimensions, Pressable } from 'react-native';
+import Animated, { useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { mockVideoData } from '../data/VideoData';
+import { useNavigation } from '@react-navigation/native';
 import FloatingButton from '../components/floatingButton';
 
-const { width, height } = Dimensions.get('window');
-const VIDEO_HEIGHT = 220;
-
-// Memoized VideoCard
-const VideoCard = memo(({ title, videoUrl, isPlaying }: { title: string; videoUrl: string; isPlaying: boolean }) => {
-  const isFocused = useIsFocused();
-  const player = useVideoPlayer(videoUrl, (p) => {
-    p.loop = true;
-    p.muted = false;
-  });
-
-  const playerRef = useRef(player);
-  const [isBuffering, setIsBuffering] = useState(true);
-
-  useEffect(() => {
-    const controlPlayback = async () => {
-      if (!isFocused) return;
-
-      setIsBuffering(true);
-      try {
-        isPlaying ? await playerRef.current.play() : await playerRef.current.pause();
-        setTimeout(() => setIsBuffering(false), 800);
-      } catch (e) {
-        console.warn('Playback error:', e);
-      }
-    };
-
-    controlPlayback();
-  }, [isPlaying, isFocused]);
-
-  return (
-    <View style={styles.card}>
-      <VideoView player={player} style={styles.video} controls />
-      {isBuffering && (
-        <View style={styles.bufferLoader}>
-          <ActivityIndicator size="large" color="#fff" />
-        </View>
-      )}
-      <View style={styles.overlay}>
-        <Text style={styles.title}>{title}</Text>
-      </View>
-    </View>
-  );
-});
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+const AnimatedScrollView = Animated.createAnimatedComponent(Animated.ScrollView);
 
 export default function VideoListScreen() {
+  const scrollY = useSharedValue(0);
+  const visibilityMap = useRef(new Map()).current;
+  const activeIndexRef = useRef<number | null>(null);
   const navigation = useNavigation();
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [loading, setLoading] = useState(false);
 
-  const onViewableItemsChanged = useCallback(
-    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
-      if (viewableItems.length > 0) {
-        const newIndex = viewableItems[0].index ?? 0;
-        if (newIndex !== currentIndex) {
-          setCurrentIndex(newIndex);
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      scrollY.value = event.contentOffset.y;
+    },
+  });
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      let mostVisibleIndex: number | null = null;
+      let mostVisiblePercent = 0;
+
+      for (const [index, { y, height }] of visibilityMap.entries()) {
+        const visibleStart = Math.max(y, scrollY.value);
+        const visibleEnd = Math.min(y + height, scrollY.value + SCREEN_HEIGHT);
+        const visibleHeight = Math.max(0, visibleEnd - visibleStart);
+        const percentVisible = visibleHeight / height;
+
+        if (percentVisible > mostVisiblePercent) {
+          mostVisiblePercent = percentVisible;
+          mostVisibleIndex = index;
         }
       }
-    },
-    [currentIndex]
-  );
 
-  const viewabilityConfig = {
-    itemVisiblePercentThreshold: 50,
-    minimumViewTime: 100,
-  };
+      for (const [index, { player }] of visibilityMap.entries()) {
+        if (index === mostVisibleIndex && mostVisiblePercent >= 0.6) {
+          if (activeIndexRef.current !== index) {
+            if (activeIndexRef.current !== null) {
+              visibilityMap.get(activeIndexRef.current)?.player.pause();
+            }
+            player.play();
+            activeIndexRef.current = index;
+          }
+        } else {
+          player.pause();
+        }
+      }
+    }, 150);
 
-  const handleNavigate = (screen: string, params?: any) => {
-    setLoading(true);
-    navigation.navigate(screen as never, params as never);
-    setLoading(false);
-  };
-
-  const renderItem = useCallback(
-    ({ item, index }: { item: any; index: number }) => (
-      <View key={index}>
-        <VideoCard
-          title={item.product_name}
-          videoUrl={item.video}
-          isPlaying={index === currentIndex}
-        />
-        {index === mockVideoData.length - 1 && (
-          <View style={styles.theEndContainer}>
-            <Text style={styles.theEndText}>🎬 The End</Text>
-          </View>
-        )}
-      </View>
-    ),
-    [currentIndex]
-  );
+    return () => clearInterval(interval);
+  }, []);
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#000' }}>
-      <StatusBar barStyle="light-content" />
+    <>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>🎬 MultiTube</Text>
-        <Text style={styles.headerSubtitle}>Your AI-Powered Video Player</Text>
+        <Text style={styles.headerText}>
+          <Text style={styles.multi}>Multi</Text>
+          <Text style={styles.tube}>Tube</Text>
+        </Text>
       </View>
 
-      <FlatList
-        data={mockVideoData}
-        keyExtractor={(_, index) => index.toString()}
-        renderItem={renderItem}
-        initialNumToRender={4}
-        maxToRenderPerBatch={3}
-        windowSize={5}
-        removeClippedSubviews
-        onViewableItemsChanged={onViewableItemsChanged}
-        viewabilityConfig={viewabilityConfig}
-        contentContainerStyle={{ paddingBottom: height / 2 }}
-        ListHeaderComponent={<View style={{ height: 10 }} />}
-      />
+      <AnimatedScrollView onScroll={scrollHandler} scrollEventThrottle={16}>
+        <View style={styles.spacerTop} />
+        {mockVideoData.map((item, index) => {
+          const player = useVideoPlayer(item.video, (p) => (p.loop = true));
+
+          return (
+            <View
+              key={`${item.product_name}-${index}`}
+              onLayout={(e) => {
+                const { y, height } = e.nativeEvent.layout;
+                visibilityMap.set(index, { y, height, player });
+              }}
+              style={styles.videoContainer}
+            >
+              <Text style={styles.label}>{item.product_name}</Text>
+
+              <Pressable
+                style={styles.videoWrapper}
+                onPress={() => {
+                  player.pause();
+                  navigation.navigate('Task2');
+                }}
+              >
+                <VideoView
+                  style={styles.video}
+                  player={player}
+                  nativeControls={false}
+                  allowsPictureInPicture
+                />
+              </Pressable>
+            </View>
+          );
+        })}
+        <View style={styles.spacerBottom} />
+      </AnimatedScrollView>
 
       <FloatingButton
-        onPress={() => handleNavigate('Task2')}
         icon="arrow-forward-circle"
+        onPress={() => {
+          if (activeIndexRef.current !== null) {
+            const current = visibilityMap.get(activeIndexRef.current);
+            current?.player.pause();
+          }
+          navigation.navigate('Task2');
+        }}
       />
-
-      {loading && (
-        <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="large" color="#ffffff" />
-        </View>
-      )}
-    </View>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
   header: {
-    paddingTop: Platform.OS === 'android' ? 40 : 60,
+    paddingTop: 50,
     paddingBottom: 20,
-    backgroundColor: '#1e1e1e',
+    backgroundColor: '#000',
     alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: '#333',
   },
-  headerTitle: {
+  headerText: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#f74f4f',
   },
-  headerSubtitle: {
-    fontSize: 14,
-    color: '#ccc',
-    marginTop: 4,
+  multi: {
+    color: 'red',
   },
-  card: {
-    marginBottom: 16,
-    borderRadius: 12,
-    overflow: 'hidden',
+  tube: {
+    color: 'white',
+  },
+  spacerTop: { height: 150 },
+  spacerBottom: { height: 300 },
+  videoContainer: {
+    width: '100%',
+    maxWidth: 400,
+    alignSelf: 'center',
+    alignItems: 'center',
+    marginBottom: 50,
     backgroundColor: '#000',
-    marginHorizontal: 10,
+    padding: 10,
+    borderRadius: 10,
   },
   video: {
-    width: width - 20,
-    height: VIDEO_HEIGHT,
-    borderRadius: 12,
+    width: '100%',
+    height: 500,
+    backgroundColor: '#000',
   },
-  bufferLoader: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.3)',
+  videoWrapper: {
+    width: '100%',
+    height: 500,
+    backgroundColor: '#000',
+    overflow: 'hidden',
   },
-  overlay: {
-    position: 'absolute',
-    bottom: 10,
-    left: 12,
-  },
-  title: {
-    fontSize: 16,
-    fontWeight: 'bold',
+  label: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 10,
     color: '#fff',
-  },
-  theEndContainer: {
-    alignItems: 'center',
-    padding: 20,
-  },
-  theEndText: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: 'gray',
-  },
-  loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 10,
   },
 });
