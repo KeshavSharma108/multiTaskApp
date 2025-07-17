@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -27,41 +27,49 @@ const VideoCard: React.FC<VideoCardProps> = ({ title, videoUrl, isPlaying }) => 
   const isFocused = useIsFocused();
   const player = useVideoPlayer(videoUrl, (p) => {
     p.loop = true;
-    p.muted = true;
+    p.muted = false;
   });
 
   const playerRef = useRef(player);
+  const [isBuffering, setIsBuffering] = useState(true);
 
-  React.useEffect(() => {
+  useEffect(() => {
+    let timeout: NodeJS.Timeout;
+
     const controlPlayback = async () => {
+      if (!isFocused) return;
+
+      setIsBuffering(true);
       try {
-        if (!isFocused) return;
         if (isPlaying) {
           await playerRef.current.play();
         } else {
           await playerRef.current.pause();
         }
+
+        timeout = setTimeout(() => setIsBuffering(false), 1000);
       } catch (e) {
-        console.warn('Video control error:', e);
+        console.warn('Playback error:', e);
       }
     };
 
     controlPlayback();
-  }, [isPlaying, isFocused]);
 
-  const handleFullscreen = () => {
-    try {
-      playerRef.current.presentFullscreenPlayer();
-    } catch (e) {
-      console.warn('Fullscreen error:', e);
-    }
-  };
+    return () => clearTimeout(timeout);
+  }, [isPlaying, isFocused]);
 
   return (
     <View style={styles.card}>
-      <TouchableOpacity activeOpacity={0.9} onPress={handleFullscreen}>
-        <VideoView player={player} style={styles.video} />
-      </TouchableOpacity>
+      <VideoView
+        player={player}
+        style={styles.video}
+        controls // ✅ Native video controls
+      />
+      {isBuffering && (
+        <View style={styles.bufferLoader}>
+          <ActivityIndicator size="large" color="#fff" />
+        </View>
+      )}
       <View style={styles.overlay}>
         <Text style={styles.title}>{title}</Text>
       </View>
@@ -71,15 +79,16 @@ const VideoCard: React.FC<VideoCardProps> = ({ title, videoUrl, isPlaying }) => 
 
 export default function VideoListScreen() {
   const navigation = useNavigation();
-  const [currentIndex, setCurrentIndex] = useState<number | null>(0);
+  const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [loading, setLoading] = useState(false);
 
   const onViewableItemsChanged = useCallback(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
       if (viewableItems.length === 0) return;
-      const centerIndex = viewableItems[Math.floor(viewableItems.length / 2)]?.index;
-      if (centerIndex != null && centerIndex !== currentIndex) {
-        setCurrentIndex(centerIndex);
+
+      const visibleIndex = viewableItems[0]?.index ?? 0;
+      if (visibleIndex !== currentIndex) {
+        setCurrentIndex(visibleIndex);
       }
     },
     [currentIndex]
@@ -109,7 +118,7 @@ export default function VideoListScreen() {
               videoUrl={item.video}
               isPlaying={index === currentIndex}
             />
-            {index === mockVideoData.length - 1 && index === currentIndex && (
+            {index === mockVideoData.length - 1 && (
               <View style={styles.theEndContainer}>
                 <Text style={styles.theEndText}>🎬 The End</Text>
               </View>
@@ -150,6 +159,16 @@ const styles = StyleSheet.create({
     width: width - 20,
     height: VIDEO_HEIGHT,
     borderRadius: 12,
+  },
+  bufferLoader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.3)',
   },
   overlay: {
     position: 'absolute',

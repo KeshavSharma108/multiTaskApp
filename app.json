@@ -20,20 +20,25 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "package": "com.keshav108.multiTaskApp"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-    
-       [
+      [
         "expo-video",
         {
           "supportsBackgroundPlayback": true,
           "supportsPictureInPicture": true
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "6d83cfab-608b-40f9-9dd3-4ef4122e3b6b"
+      }
+    }
   }
 }
