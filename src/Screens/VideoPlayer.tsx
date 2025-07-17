@@ -109,7 +109,7 @@ export default function VideoListScreen() {
             const current = visibilityMap.get(activeIndexRef.current);
             current?.player.pause();
           }
-          navigation.navigate('Task2');
+         navigation.navigate('FullScreenVideo', { video: item.video })
         }}
       />
     </>
