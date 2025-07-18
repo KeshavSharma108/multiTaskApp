@@ -24,7 +24,8 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.keshav108.multiTaskApp"
+      "package": "com.Keshav2.multiTaskApp",
+      "permissions": []
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -41,8 +42,9 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "6d83cfab-608b-40f9-9dd3-4ef4122e3b6b"
+        "projectId": "95a7723a-5adf-47e4-ba4d-9c2c7a2595e8"
       }
-    }
+    },
+    "owner": "keshav2"
   }
 }

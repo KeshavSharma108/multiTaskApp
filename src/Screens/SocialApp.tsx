@@ -22,6 +22,26 @@ type GridItem = {
 const TABS = ['Posts', 'Videos', 'Tagged', 'About'] as const;
 type Tab = typeof TABS[number];
 
+// 👇 Per-image component with loader
+const GridImage = ({ uri }: { uri: string }) => {
+  const [imageLoading, setImageLoading] = useState(true);
+
+  return (
+    <View style={styles.imageWrapper}>
+      {imageLoading && (
+        <View style={styles.imageLoader}>
+          <ActivityIndicator size="small" color="#007AFF" />
+        </View>
+      )}
+      <Image
+        source={{ uri }}
+        style={styles.gridImage}
+        onLoadEnd={() => setImageLoading(false)}
+      />
+    </View>
+  );
+};
+
 export default function SocialApp() {
   const [activeTab, setActiveTab] = useState<Tab>('Posts');
   const [gridData, setGridData] = useState<GridItem[]>([]);
@@ -44,7 +64,6 @@ export default function SocialApp() {
     setGridData((prev) => [...prev, ...newItems]);
     setLoading(false);
 
-    // Stop loading after 100 items (example limit)
     if (pageNum * pageSize >= 100) {
       setHasMore(false);
     }
@@ -61,7 +80,7 @@ export default function SocialApp() {
   };
 
   const renderGridItem = ({ item }: { item: GridItem }) => (
-    <Image source={{ uri: item.uri }} style={styles.gridImage} />
+    <GridImage uri={item.uri} />
   );
 
   const renderTabContent = () => {
@@ -117,10 +136,21 @@ const styles = StyleSheet.create({
   gridImage: {
     width: width / 3,
     height: width / 3,
-    borderWidth: 0.5,
-    borderColor: '#ccc',
   },
   gridContainer: {
     paddingBottom: 10,
+  },
+  imageWrapper: {
+    width: width / 3,
+    height: width / 3,
+    borderWidth: 0.5,
+    borderColor: '#ccc',
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  imageLoader: {
+    position: 'absolute',
+    zIndex: 1,
   },
 });
